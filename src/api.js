@@ -5,8 +5,7 @@ import axios from "axios";
 ============================================================ */
 
 export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001";
-
+  import.meta.env.VITE_API_BASE_URL || "https://mini-edr-backend.onrender.com";
 export const WS_BASE =
   import.meta.env.VITE_WS_BASE_URL ||
   API_BASE.replace(/^http/i, "ws") + "/ws/live";
