@@ -4,12 +4,17 @@ import axios from "axios";
    BASE CONFIG
 ============================================================ */
 
-export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8001";
+const apiBaseFromEnv = import.meta.env.VITE_API_BASE_URL;
+
+if (!apiBaseFromEnv) {
+  throw new Error("VITE_API_BASE_URL is not configured.");
+}
+
+export const API_BASE = apiBaseFromEnv.replace(/\/+$/, "");
 
 export const WS_BASE =
-  import.meta.env.VITE_WS_BASE_URL ||
-  API_BASE.replace(/^http/i, "ws") + "/ws/live";
+  (import.meta.env.VITE_WS_BASE_URL ||
+    API_BASE.replace(/^http/i, "ws") + "/ws/live").replace(/\/+$/, "");
 
 const AUTH_TOKEN_KEY = "mini_edr_dashboard_token";
 const AUTH_USER_KEY = "mini_edr_dashboard_user";
