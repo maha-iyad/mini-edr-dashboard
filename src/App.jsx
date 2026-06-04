@@ -106,16 +106,23 @@ function fastSortByNewest(items, key) {
   );
 }
 
-function getRiskNumber(item) {
-  return Number(item?.risk_score ?? 0);
-}
-
 function getRuleScore(item) {
   return Number(item?.rule_score ?? 0);
 }
 
 function getAiScore(item) {
   return Number(item?.ai_score ?? 0);
+}
+
+function getRiskNumber(item) {
+  const ruleScore = getRuleScore(item);
+  const aiScore = getAiScore(item);
+
+  if (ruleScore > 0 && aiScore > 0) {
+    return Math.round((ruleScore + aiScore) / 2);
+  }
+
+  return Number(item?.risk_score ?? ruleScore ?? 0);
 }
 
 function getRiskClass(score) {
@@ -1565,10 +1572,11 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
 
   const aiAttackExplanation = getAiAttackExplanation(event);
   const attackSummary = getAttackSummary(event);
-  const aiConfidenceLevel = getAiConfidenceLevel(event);
   const aiAttackCategory = getAiAttackCategory(event);
   const aiSeverity = getAiSeverity(event);
   const aiModelStatus = getAiModelStatusText(event);
+  const hasActiveAiAnalysis = getAiScore(event) > 0;
+  const showSupportingEvidence = false;
   const attackChain = getAttackChain(event);
   const correlatedAlerts = getCorrelatedAlerts(event);
   const recommendedAction = getRecommendedAction(event);
@@ -2041,11 +2049,12 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
           </div>
         </div>
 
+        {hasActiveAiAnalysis ? (
         <div className="panel section-gap soc-ai-verdict-panel">
           <div className="panel-header soft-bottom">
             <div>
               <div className="panel-title">AI Verdict</div>
-              <div className="panel-subtitle">Final AI severity, confidence, predicted category, and model contribution</div>
+              <div className="panel-subtitle">Final AI severity, predicted category, and model contribution</div>
             </div>
             <span className={`badge ${getSeverityClass(aiSeverity)}`}>
               {getSeverityLabel(aiSeverity)} AI
@@ -2058,15 +2067,6 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
               <div className="detail-value">
                 <span className={`badge ${getSeverityClass(aiSeverity)}`}>
                   {getSeverityLabel(aiSeverity)}
-                </span>
-              </div>
-            </div>
-
-            <div className="detail-item">
-              <div className="detail-key">Confidence</div>
-              <div className="detail-value">
-                <span className={`badge ${getSeverityClass(getSeverity(event))}`}>
-                  {aiConfidenceLevel}
                 </span>
               </div>
             </div>
@@ -2102,7 +2102,9 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
             </div>
           </div>
         </div>
+        ) : null}
 
+        {hasActiveAiAnalysis ? (
         <div className="panel section-gap">
           <div className="panel-header soft-bottom">
             <div>
@@ -2136,6 +2138,7 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
             ) : null}
           </div>
         </div>
+        ) : null}
 
         <div className="panel section-gap">
           <div className="panel-header soft-bottom">
@@ -2236,6 +2239,7 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
           </div>
         </div>
 
+        {showSupportingEvidence ? (
         <div className="panel section-gap">
           <div className="panel-header soft-bottom">
             <div>
@@ -2259,6 +2263,7 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
 
           {renderEvidenceTab()}
         </div>
+        ) : null}
 
         <div className="panel section-gap">
           <div className="panel-title">Response Actions</div>

@@ -565,7 +565,8 @@ tr:hover td {
   border-color: rgba(34, 197, 94, 0.24);
 }
 
-.badge.critical {
+.badge.critical,
+.status-badge.critical {
   background: rgba(127, 29, 29, 0.35);
   color: #fecaca;
   border-color: rgba(127, 29, 29, 0.6);
