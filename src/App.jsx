@@ -128,7 +128,7 @@ function getRiskNumber(item) {
   const aiScore = getAiScore(item);
 
   if (ruleScore > 0 && aiScore > 0) {
-    return Math.min(ruleScore + aiScore, 100);
+    return Math.min(Math.round((ruleScore + aiScore) / 2), 100);
   }
 
   return Number.isFinite(ruleScore) ? ruleScore : 0;
