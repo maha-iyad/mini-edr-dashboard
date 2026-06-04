@@ -115,24 +115,41 @@ function getAiScore(item) {
 }
 
 function getRiskNumber(item) {
+  const rawRisk = item?.risk_score ?? item?.final_risk_score;
+  if (typeof rawRisk === "string") {
+    const parsed = Number.parseFloat(rawRisk);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  const risk = Number(rawRisk);
+  if (Number.isFinite(risk)) return risk;
+
   const ruleScore = getRuleScore(item);
   const aiScore = getAiScore(item);
 
   if (ruleScore > 0 && aiScore > 0) {
-    return Math.round((ruleScore + aiScore) / 2);
+    return Math.min(ruleScore + aiScore, 100);
   }
 
-  return Number(item?.risk_score ?? ruleScore ?? 0);
+  return Number.isFinite(ruleScore) ? ruleScore : 0;
+}
+
+function severityFromRiskScore(score) {
+  const value = Number(score);
+  const riskScore = Number.isFinite(value) ? value : 0;
+  if (riskScore <= 30) return "low";
+  if (riskScore <= 60) return "medium";
+  if (riskScore <= 80) return "high";
+  return "critical";
 }
 
 function getRiskClass(score) {
-  if (score >= 70) return "high";
-  if (score >= 30) return "medium";
-  return "low";
+  return severityFromRiskScore(score);
 }
 
 function getSeverity(item) {
-  return item?.severity || "low";
+  if (!item) return "low";
+  return severityFromRiskScore(getRiskNumber(item));
 }
 
 function getSeverityClass(severity) {
@@ -256,11 +273,23 @@ function getAiAttackCategory(item) {
   );
 }
 
+function getAiSeverityFromText(text) {
+  const value = String(text || "");
+  const match =
+    value.match(/AI predicted severity:\s*(Low|Medium|High|Critical)/i) ||
+    value.match(/classified this event as\s*(Low|Medium|High|Critical)\s*severity/i);
+
+  return match ? getSeverityLabel(match[1]) : null;
+}
+
 function getAiSeverity(item) {
+  const severityFromExplanation = getAiSeverityFromText(getAiAttackExplanation(item));
+
   return (
-    item?.ai_model_details?.ai_severity ||
-    item?.ai_severity ||
-    getSeverityLabel(getSeverity(item))
+    severityFromExplanation ||
+    item?.ai_model_details?.ai_predicted_severity ||
+    item?.ai_predicted_severity ||
+    "Informational"
   );
 }
 
@@ -1134,7 +1163,7 @@ function normalizeTimelineType(item = {}) {
 
 function getTimelineMeta(item = {}, fallbackSeverity = "low") {
   const type = normalizeTimelineType(item);
-  const severity = String(item.severity || fallbackSeverity || "low").toLowerCase();
+  const severity = String(fallbackSeverity || "low").toLowerCase();
 
   const map = {
     CREATED: {
@@ -1204,7 +1233,7 @@ function getTimelineDescription(item = {}, meta, event = {}) {
   }
 
   if (type === "CREATED") {
-    const severity = getSeverityLabel(item.severity || getSeverity(event));
+    const severity = getSeverityLabel(getSeverity(event));
     return `Incident was created with ${severity} severity after telemetry analysis.`;
   }
 
@@ -1240,7 +1269,7 @@ function buildProfessionalTimeline(rawTimeline = [], event = {}) {
         description,
         badgeClass: meta.badgeClass,
         time: item.created_at || item.timestamp || item.requested_at || event.timestamp,
-        severity: item.severity || getSeverity(event),
+        severity: getSeverity(event),
         rawType: item.event_type || item.type || "timeline",
       };
     });
@@ -1262,7 +1291,7 @@ function buildProfessionalTimeline(rawTimeline = [], event = {}) {
   }
 
   const hasDetection = timelineItems.some((item) => item.type === "DETECTION");
-  if (!hasDetection && event?.id && getRiskNumber(event) >= 30) {
+  if (!hasDetection && event?.id && getRiskNumber(event) > 30) {
     const meta = getTimelineMeta({ event_type: "detection" }, getSeverity(event));
     timelineItems.splice(Math.min(1, timelineItems.length), 0, {
       id: `auto-detection-${event.id}`,
@@ -2054,16 +2083,16 @@ function EventDetailsModal({ event, onClose, onStatusChange, onCreateAction }) {
           <div className="panel-header soft-bottom">
             <div>
               <div className="panel-title">AI Verdict</div>
-              <div className="panel-subtitle">Final AI severity, predicted category, and model contribution</div>
+              <div className="panel-subtitle">AI predicted severity, predicted category, and model contribution</div>
             </div>
             <span className={`badge ${getSeverityClass(aiSeverity)}`}>
-              {getSeverityLabel(aiSeverity)} AI
+              {getSeverityLabel(aiSeverity)} AI Predicted
             </span>
           </div>
 
           <div className="details-grid soc-ai-verdict-grid">
             <div className="detail-item">
-              <div className="detail-key">AI Severity</div>
+              <div className="detail-key">AI Predicted Severity</div>
               <div className="detail-value">
                 <span className={`badge ${getSeverityClass(aiSeverity)}`}>
                   {getSeverityLabel(aiSeverity)}
@@ -2803,7 +2832,7 @@ function ResponseActionsTable({ data }) {
 
 function CriticalAlertsPanel({ telemetry, onOpenEvent, onStatusChange }) {
   const criticalAlerts = telemetry
-    .filter((item) => getRiskNumber(item) >= 70)
+    .filter((item) => getRiskNumber(item) > 80)
     .sort((a, b) => getRiskNumber(b) - getRiskNumber(a))
     .slice(0, 6);
 
@@ -2819,7 +2848,7 @@ function CriticalAlertsPanel({ telemetry, onOpenEvent, onStatusChange }) {
           <div className="empty-state-icon">✓</div>
           <div className="empty-state-title">No critical alerts</div>
           <div className="empty-state-text">
-            No high-severity detections require immediate attention right now.
+            No critical detections require immediate attention right now.
           </div>
         </div>
       ) : (
@@ -2876,7 +2905,10 @@ function LiveActivityFeed({ liveEvents, responseActions }) {
       time: item.timestamp || null,
       type: "Live",
       source: sourceLabel,
-      severity: item.severity || "medium",
+      severity:
+        item.risk_score !== undefined && item.risk_score !== null
+          ? severityFromRiskScore(getRiskNumber(item))
+          : item.severity || "medium",
       title: item.event_title || "Security Event",
       host: item.hostname || "-",
       message: item.reason || buildLiveEventMessage(item),
@@ -3015,13 +3047,17 @@ function TopRiskyHostsPanel({ agents, onOpenAgent }) {
 }
 
 function RiskDistributionChart({ telemetry }) {
-  const high = telemetry.filter((item) => getRiskNumber(item) >= 70).length;
-  const medium = telemetry.filter(
-    (item) => getRiskNumber(item) >= 30 && getRiskNumber(item) < 70
+  const critical = telemetry.filter((item) => getRiskNumber(item) > 80).length;
+  const high = telemetry.filter(
+    (item) => getRiskNumber(item) > 60 && getRiskNumber(item) <= 80
   ).length;
-  const low = telemetry.filter((item) => getRiskNumber(item) < 30).length;
+  const medium = telemetry.filter(
+    (item) => getRiskNumber(item) > 30 && getRiskNumber(item) <= 60
+  ).length;
+  const low = telemetry.filter((item) => getRiskNumber(item) <= 30).length;
 
   const data = [
+    { name: "Critical", value: critical, color: "#ff5d73" },
     { name: "High", value: high, color: "#ff5d73" },
     { name: "Medium", value: medium, color: "#ffb648" },
     { name: "Low", value: low, color: "#22c55e" },
@@ -3134,7 +3170,7 @@ function IncidentOverview({ telemetry, onOpenEvent, onStatusChange }) {
     const riskScore = getRiskNumber(item);
 
     return (
-      riskScore >= 30 ||
+      riskScore > 30 ||
       severity === "medium" ||
       severity === "high" ||
       severity === "critical" ||
@@ -3309,7 +3345,7 @@ function IncidentsPage({ telemetry, onOpenEvent, onStatusChange }) {
             severity === "medium" ||
             severity === "high" ||
             severity === "critical" ||
-            riskScore >= 30
+            riskScore > 30
           );
         })
         .sort(
@@ -3809,19 +3845,19 @@ function DashboardApp({ session, onLogout }) {
           subtitle="Stored telemetry records"
         />
         <SummaryCard
-          title="High Alerts"
+          title="Critical Alerts"
           value={stats.critical_alerts ?? 0}
-          subtitle="Risk score 70+"
+          subtitle="Risk score 81-100"
         />
         <SummaryCard
           title="Medium Alerts"
-          value={telemetry.filter((item) => getRiskNumber(item) >= 30 && getRiskNumber(item) < 70).length}
-          subtitle="Risk score 30–69"
+          value={telemetry.filter((item) => getRiskNumber(item) > 30 && getRiskNumber(item) <= 60).length}
+          subtitle="Risk score 31-60"
         />
         <SummaryCard
           title="Low Alerts"
           value={stats.low_alerts ?? 0}
-          subtitle="Low-risk telemetry"
+          subtitle="Risk score 0-30"
         />
         <SummaryCard
           title="Open Incidents"
