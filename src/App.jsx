@@ -173,6 +173,10 @@ function getSeverityLabel(severity) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function getAiSeverityFromScore(item) {
+  return getSeverityLabel(severityFromRiskScore(getAiScore(item)));
+}
+
 function getRiskReasons(item) {
   if (!item?.risk_reasons) return [];
   if (Array.isArray(item.risk_reasons)) return item.risk_reasons;
@@ -234,7 +238,13 @@ function getAttackSummary(item) {
 }
 
 function getAiAttackExplanation(item) {
-  return item?.ai_attack_explanation || "";
+  const explanation = item?.ai_attack_explanation || "";
+  if (!explanation) return "";
+
+  return String(explanation).replace(
+    /AI predicted severity:\s*(Low|Medium|High|Critical)/i,
+    `AI predicted severity: ${getAiSeverityFromScore(item)}`
+  );
 }
 
 function getAttackConfidence(item) {
@@ -283,14 +293,7 @@ function getAiSeverityFromText(text) {
 }
 
 function getAiSeverity(item) {
-  const severityFromExplanation = getAiSeverityFromText(getAiAttackExplanation(item));
-
-  return (
-    severityFromExplanation ||
-    item?.ai_model_details?.ai_predicted_severity ||
-    item?.ai_predicted_severity ||
-    "Informational"
-  );
+  return getAiSeverityFromScore(item);
 }
 
 function getAiModelDetails(item) {
